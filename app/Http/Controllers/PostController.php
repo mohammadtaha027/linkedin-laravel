@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Resources\PostResource;
 use App\Models\Post;
 use App\Models\Like;
 use App\Models\User;
@@ -16,12 +17,14 @@ class PostController extends Controller
      */
     public function index(Post $post)
     {
-        if(Auth::guard('api')->check()){
-            //$posts = Post::select('*')->get();
-            $myId = Auth::guard('api')->id();
-            $users = User::getUsers($myId);
-            $posts = $post->getPosts($post);
-            return response()->json(['posts'=>$posts, 'users'=>$users], 200);
+        if (Auth::guard('api')->check()) {
+            $friends = Auth::guard('api')->user()->getFriends();
+            $second_friends = Auth::guard('api')->user()->get2ndFriends();
+            $unFriends = Auth::guard('api')->user()->getUnfriends();
+
+            $posts = PostResource::collection(Post::with('likes', 'comments')->orderBy('created_at', 'DESC')->get());
+
+            return response()->json(['posts' => $posts, 'users' => ['friends' => $friends, 'friends_2rd' => $second_friends, 'unfriends' => $unFriends]], 200);
         }
         return response()->json(['status' => 'failed', 'message' => 'Unauthenticated'], 200);
     }
@@ -31,7 +34,7 @@ class PostController extends Controller
      */
     public function create(Request $request, Post $post)
     {
-        if(Auth::guard('api')->check()){
+        if (Auth::guard('api')->check()) {
             $user = Auth::guard('api')->user();
             //$slug = strtolower(preg_replace('/[^A-Za-z0-9\-]/', '', str_replace(' ', '-', $request->title)));
             $input = $request->validate([
@@ -42,7 +45,7 @@ class PostController extends Controller
             $imageName = str_replace(' ', '-', $imageName);
             $data = $request->file('image')->storeAs('public/images', $imageName);
             $url = Storage::url($data);
-            $image = env('APP_URL').$url;
+            $image = env('APP_URL') . $url;
             $data = array(
                 'title' => $input['title'],
                 'user_id' => Auth::guard('api')->id(),
@@ -54,15 +57,15 @@ class PostController extends Controller
             );
             //$new_post = Post::create($data);
 
-            if(Post::create($data)){
-                $new_post = $post->getPosts($post);
-                return response()->json(['status' => 'success', 'post'=> $new_post, 'message' => 'Post created successfully.'], 200);
+            if (Post::create($data)) {
+                $new_post = PostResource::collection(Post::orderBy('created_at', 'DESC')->get());
+
+                return response()->json(['status' => 'success', 'post' => $new_post, 'message' => 'Post created successfully.'], 200);
             }
             return response()->json(['status' => 'failed', 'message' => 'Can\'t create your post'], 200);
-        }else{
+        } else {
             return response()->json(['status' => 'failed', 'message' => 'Unauthenticated'], 200);
         }
-
     }
 
     /**
@@ -78,7 +81,7 @@ class PostController extends Controller
      */
     public function show(Request $request, Post $post)
     {
-        if(Auth::guard('api')->check()){
+        if (Auth::guard('api')->check()) {
             $id = $request->id;
             // $post = Post::select('*')->where('id', $id)->get();
             $item = $post->find($id);
@@ -100,7 +103,7 @@ class PostController extends Controller
      */
     public function update(Request $request, Post $post)
     {
-        if(Auth::guard('api')->check()){
+        if (Auth::guard('api')->check()) {
             $item = $post->find($request->id);
             $input = $request->all();
             $item->fill($input)->save();
@@ -114,10 +117,10 @@ class PostController extends Controller
      */
     public function delete(Request $request, Post $post)
     {
-        if(Auth::guard('api')->check()){
+        if (Auth::guard('api')->check()) {
             $user_id = Auth::guard('api')->id();
             $item = $post->find($request->id);
-            if($item->user_id == $user_id){
+            if ($item->user_id == $user_id) {
                 $item->delete();
                 return response()->json(['status' => 'success', 'message' => 'Post has been deleted successfully.'], 200);
             }
@@ -131,42 +134,39 @@ class PostController extends Controller
         $imageName = str_replace(' ', '-', $imageName);
         $data = $request->file('image')->storeAs('public/images', $imageName);
         $url = Storage::url($data);
-        $url = env('APP_URL').$url;
-        return response()->json(['status'=> 'success', 'url'=> $url], 200);
+        $url = env('APP_URL') . $url;
+        return response()->json(['status' => 'success', 'url' => $url], 200);
     }
     public function like(Request $request, Post $post)
     {
-        if(Auth::guard('api')->check()){
+        if (Auth::guard('api')->check()) {
             $user_id = Auth::guard('api')->id();
             $post_item = $post->find($request->post_id);
             $input = $request->validate([
-                'post_id'=> 'required'
+                'post_id' => 'required'
             ]);
             $data = array(
                 'user_id' => $user_id,
                 'post_id' => $input['post_id']
             );
             $checkPost = $post->find($input['post_id']);
-            if($checkPost){
+            if ($checkPost) {
                 $checkLike = Like::where('post_id', $input['post_id'])->where('user_id', $user_id)->first();
-                if($checkLike){
+                if ($checkLike) {
                     $checkLike->delete();
                     $likeCount = Like::select('*')->where('post_id', $input['post_id'])->get()->count();
-                    return response()->json(['status'=>'success', 'counts'=>$likeCount, 'message'=>'unliked'], 200);
-                }else{
+                    return response()->json(['status' => 'success', 'counts' => $likeCount, 'message' => 'unliked'], 200);
+                } else {
                     $like = Like::create($data);
-                    if($like){
+                    if ($like) {
                         $likeCount = Like::select('*')->where('post_id', $input['post_id'])->get()->count();
-                        return response()->json(['status'=>'success', 'counts'=>$likeCount, 'message'=>'liked'], 200);
+                        return response()->json(['status' => 'success', 'counts' => $likeCount, 'message' => 'liked'], 200);
                     }
                 }
-            }else{
-                return response()->json(['status'=>'failed', 'counts'=>0, 'message'=>'We can\'t find this post'], 400);
+            } else {
+                return response()->json(['status' => 'failed', 'counts' => 0, 'message' => 'We can\'t find this post'], 400);
             }
-
-
         }
         return response()->json(['status' => 'failed', 'message' => 'Unauthenticated'], 200);
     }
-
 }

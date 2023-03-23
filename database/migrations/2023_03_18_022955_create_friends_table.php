@@ -13,8 +13,8 @@ return new class extends Migration
     {
         Schema::create('friends', function (Blueprint $table) {
             $table->id();
-            $table->bigInteger('user1_id');
-            $table->bigInteger('user2_id');
+            $table->bigInteger('first_user');
+            $table->bigInteger('second_user');
             $table->text('status');
             $table->timestamps();
         });
